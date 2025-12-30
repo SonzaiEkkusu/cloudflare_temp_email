@@ -4,10 +4,10 @@ import { en } from './en'
 
 export default defineConfig({
   title: "Temp Mail Doc",
-  lang: 'zh-CN',
+  lang: 'en-US',
   lastUpdated: true,
   locales: {
-    root: { label: '简体中文', ...zh },
+    root: { label: 'English', ...zh },
     en: { label: 'English', ...en }
   },
   head: [
