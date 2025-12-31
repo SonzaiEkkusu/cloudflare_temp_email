@@ -3,13 +3,13 @@ import { Telegraf, Context as TgContext, Markup } from "telegraf";
 import { callbackQuery } from "telegraf/filters";
 import * as OTPAuth from "otpauth"; 
 
-// --- IMPORT FAKER (ASIA & EROPA) ---
+// --- IMPORT FAKER (ASIA & EUROPE) ---
 import { 
     type Faker,
     fakerEN_US, // Default (US)
     // Asia
     fakerID_ID, fakerJA, fakerKO, fakerZH_CN, fakerZH_TW, fakerVI, fakerTH, fakerEN_IN, fakerNE, fakerTR,
-    // Eropa
+    // Europe
     fakerEN_GB, fakerFR, fakerDE, fakerIT, fakerES, fakerRU, fakerUK, fakerPL, fakerNL, fakerPT_PT, fakerSV, fakerFI, fakerCS_CZ
 } from '@faker-js/faker';
 
@@ -21,6 +21,33 @@ import { commonParseMail } from "../common";
 import { UserFromGetMe } from "telegraf/types";
 import i18n from "../i18n";
 import { LocaleMessages } from "../i18n/type";
+
+// --- HELPER: LUHN ALGORITHM GENERATOR ---
+// Generates a valid 16-digit credit card number from a specific BIN
+const generateLuhnCC = (bin: string): string => {
+    let ccNumber = bin;
+    // Fill with random digits until length is 15 (leaving space for check digit)
+    while (ccNumber.length < 15) {
+        ccNumber += Math.floor(Math.random() * 10).toString();
+    }
+
+    // Calculate Check Sum
+    let sum = 0;
+    // Iterate over the 15 digits
+    for (let i = 0; i < ccNumber.length; i++) {
+        let digit = parseInt(ccNumber[i]);
+        // For 16-digit numbers, we double digits at even indices (0, 2, 4...)
+        if (i % 2 === 0) {
+            digit *= 2;
+            if (digit > 9) digit -= 9;
+        }
+        sum += digit;
+    }
+
+    // Calculate the check digit (16th digit)
+    const checkDigit = (10 - (sum % 10)) % 10;
+    return ccNumber + checkDigit.toString();
+};
 
 // Helper to get messages by userId
 const getTgMessages = async (
@@ -52,7 +79,7 @@ const COMMANDS = [
     { command: "mails", description: "View mails, /mails <address>" },
     { command: "cleaninvalidaddress", description: "Clean invalid addresses" },
     { command: "lang", description: "Set language" },
-    { command: "fake", description: "Generate Fake ID (e.g. /fake id, /fake us)" }, // <-- FITUR FAKE ID
+    { command: "fake", description: "Generate Fake ID (e.g. /fake id, /fake us, /fake kr)" },
 ]
 
 export const getTelegramCommands = (c: Context<HonoCustomType>) => {
@@ -262,27 +289,28 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         );
     });
 
-    // --- FITUR BARU: GENERATE FAKE IDENTITY (DENGAN LOCALE) ---
+    // --- FEATURE: GENERATE FAKE IDENTITY (WITH CREDIT CARD & BIN SUPPORT) ---
     bot.command("fake", async (ctx) => {
-        // Daftar negara yang didukung (Asia & Eropa)
-        const supportedLocales: Record<string, { faker: Faker, name: string }> = {
-            // Default / Amerika
+        // Supported Countries Configuration
+        // bin: Optional specific BIN for that country
+        const supportedLocales: Record<string, { faker: Faker, name: string, bin?: string }> = {
+            // Default / USA
             'us': { faker: fakerEN_US, name: 'United States' },
             'usa': { faker: fakerEN_US, name: 'United States' },
 
             // --- ASIA ---
             'id': { faker: fakerID_ID, name: 'Indonesia' },
             'jp': { faker: fakerJA, name: 'Japan' },
-            'kr': { faker: fakerKO, name: 'South Korea' },
+            'kr': { faker: fakerKO, name: 'South Korea', bin: '625814260' }, // Specific BIN for KR
             'cn': { faker: fakerZH_CN, name: 'China' },
             'tw': { faker: fakerZH_TW, name: 'Taiwan' },
             'vn': { faker: fakerVI, name: 'Vietnam' },
             'th': { faker: fakerTH, name: 'Thailand' },
-            'in': { faker: fakerEN_IN, name: 'India' },
+            'in': { faker: fakerEN_IN, name: 'India', bin: '551827706' }, // Specific BIN for India
             'np': { faker: fakerNE, name: 'Nepal' },
             'tr': { faker: fakerTR, name: 'Turkey' },
 
-            // --- EROPA ---
+            // --- EUROPE ---
             'uk': { faker: fakerEN_GB, name: 'United Kingdom' },
             'gb': { faker: fakerEN_GB, name: 'United Kingdom' },
             'fr': { faker: fakerFR, name: 'France' },
@@ -302,25 +330,27 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         const args = ctx.message.text.split(/\s+/);
         let selectedFaker = fakerEN_US;
         let selectedName = "United States";
+        let specificBin: string | undefined = undefined;
 
-        // Logic Validasi:
+        // Validation Logic:
         if (args[1]) {
-            // Jika user memasukkan kode negara (contoh: /fake mars atau /fake id)
+            // If user enters a country code (e.g., /fake id or /fake mars)
             const inputCode = args[1].toLowerCase();
             const selected = supportedLocales[inputCode];
 
             if (selected) {
-                // Jika support
+                // Country supported
                 selectedFaker = selected.faker;
                 selectedName = selected.name;
+                specificBin = selected.bin;
             } else {
-                // Jika TIDAK support (contoh: /fake mars)
-                return await ctx.reply("Belum support untuk identity ini");
+                // Country NOT supported
+                return await ctx.reply("Unsupported identity for this country.");
             }
         } 
-        // Jika tidak ada argumen (/fake), lanjut menggunakan default US
+        // If no argument (/fake), default to US
 
-        // Generate Data
+        // --- Generate Identity Data ---
         const sex = selectedFaker.person.sexType();
         const firstName = selectedFaker.person.firstName(sex);
         const lastName = selectedFaker.person.lastName();
@@ -333,6 +363,23 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         const lat = selectedFaker.location.latitude();
         const long = selectedFaker.location.longitude();
 
+        // --- Generate Credit Card Data ---
+        let ccNumber: string;
+        if (specificBin) {
+            // Generate valid CC from specific BIN using Luhn Algorithm
+            ccNumber = generateLuhnCC(specificBin);
+        } else {
+            // Generate random valid CC
+            ccNumber = selectedFaker.finance.creditCardNumber();
+        }
+
+        // Expiry Date (Future date)
+        const expiryDate = selectedFaker.date.future({ years: 5 });
+        const expiryFormatted = `${expiryDate.getFullYear()}/${expiryDate.getMonth() + 1}`;
+        
+        // CVV
+        const cvv = selectedFaker.finance.creditCardCVV();
+
         const message = 
             `Full Name\t\`${firstName} ${lastName}\`\n` +
             `Gender\t\`${sex}\`\n` +
@@ -343,7 +390,10 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
             `Phone Number\t\`${phone}\`\n` +
             `Country\t\`${selectedName}\`\n` + 
             `Latitude\t\`${lat}\`\n` +
-            `Longitude\t\`${long}\``;
+            `Longitude\t\`${long}\`\n\n` +
+            `Credit card number\t\`${ccNumber}\`\n` +
+            `Expire\t\`${expiryFormatted}\`\n` +
+            `CVV\t\`${cvv}\``;
 
         return await ctx.reply(message, { parse_mode: "Markdown" });
     });
@@ -433,19 +483,19 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         await ctx.answerCbQuery();
     });
 
-    // --- FITUR BARU: 2FA / OTP Generator ---
-    // Menangkap pesan teks biasa (yang bukan command)
+    // --- FEATURE: 2FA / OTP Generator ---
+    // Listens for plain text messages (not commands)
     bot.on("text", async (ctx) => {
-        // Ambil teks pesan
+        // Get message text
         const text = ctx.message.text.trim().replace(/\s/g, '').toUpperCase();
 
-        // Regex untuk validasi Base32 (Huruf A-Z dan Angka 2-7)
-        // Panjang minimal 10 karakter untuk menghindari trigger dari chat biasa
+        // Regex for Base32 validation (A-Z and 2-7)
+        // Minimum length 10 to avoid triggering on random chat
         const base32Regex = /^[A-Z2-7]{10,}$/;
 
         if (base32Regex.test(text)) {
             try {
-                // Konfigurasi TOTP
+                // TOTP Configuration
                 const totp = new OTPAuth.TOTP({
                     issuer: "TelegramBot",
                     label: "User",
@@ -455,15 +505,15 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
                     secret: OTPAuth.Secret.fromBase32(text)
                 });
 
-                // Generate kode
+                // Generate code
                 const code = totp.generate();
 
-                // Balas dengan format yang diminta
+                // Reply with formatted code
                 return await ctx.reply(`Your OTP code is: \`${code}\``, {
                     parse_mode: "Markdown"
                 });
             } catch (e) {
-                // Abaikan error jika format salah agar tidak spam
+                // Ignore errors to prevent spamming on invalid formats
                 console.error("OTP Error", e);
             }
         }
