@@ -355,6 +355,9 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         let state = "-";
         try { state = selectedFaker.location.state(); } catch(e) {} 
         
+        // Combined City States
+        const cityStates = `${city} ${state}`;
+
         // Remove spaces from zip code
         const zip = selectedFaker.location.zipCode().replace(/\s/g, '');
         
@@ -382,7 +385,8 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         const message = 
             `Full Name\t\`${firstName} ${lastName}\`\n` +
             `Gender\t\`${sex}\`\n` +
-            `Street\t\`${address}\`\n` + // Label changed to Street
+            `Street\t\`${address}\`\n` + 
+            `City States\t\`${cityStates}\`\n` + // Added City States here
             `City/Town\t\`${city}\`\n` +
             `State/Province/Region\t\`${state}\`\n` +
             `Zip/Postal Code\t\`${zip}\`\n` +
