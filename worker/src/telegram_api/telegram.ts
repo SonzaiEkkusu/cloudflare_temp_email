@@ -1,7 +1,7 @@
-
 import { Context } from "hono";
 import { Telegraf, Context as TgContext, Markup } from "telegraf";
 import { callbackQuery } from "telegraf/filters";
+import * as OTPAuth from "otpauth"; // Pastikan library ini sudah terinstall
 
 import { CONSTANTS } from "../constants";
 import { getBooleanValue, getDomains, getJsonObjectValue, getStringValue } from '../utils';
@@ -362,6 +362,43 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         }
         await ctx.answerCbQuery();
     });
+
+    // --- FITUR BARU: 2FA / OTP Generator ---
+    // Menangkap pesan teks biasa (yang bukan command)
+    bot.on("text", async (ctx) => {
+        // Ambil teks pesan
+        const text = ctx.message.text.trim().replace(/\s/g, '').toUpperCase();
+
+        // Regex untuk validasi Base32 (Huruf A-Z dan Angka 2-7)
+        // Panjang minimal 10 karakter untuk menghindari trigger dari chat biasa
+        const base32Regex = /^[A-Z2-7]{10,}$/;
+
+        if (base32Regex.test(text)) {
+            try {
+                // Konfigurasi TOTP
+                const totp = new OTPAuth.TOTP({
+                    issuer: "TelegramBot",
+                    label: "User",
+                    algorithm: "SHA1",
+                    digits: 6,
+                    period: 30,
+                    secret: OTPAuth.Secret.fromBase32(text)
+                });
+
+                // Generate kode
+                const code = totp.generate();
+
+                // Balas dengan format yang diminta
+                return await ctx.reply(`Kode OTP Anda adalah: \`${code}\``, {
+                    parse_mode: "Markdown"
+                });
+            } catch (e) {
+                // Abaikan error jika format salah agar tidak spam
+                console.error("OTP Error", e);
+            }
+        }
+    });
+    // --- AKHIR FITUR BARU ---
 
     return bot;
 }
