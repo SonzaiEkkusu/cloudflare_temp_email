@@ -369,13 +369,17 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
             // Generate valid CC from specific BIN using Luhn Algorithm
             ccNumber = generateLuhnCC(specificBin);
         } else {
-            // Generate random valid CC
-            ccNumber = selectedFaker.finance.creditCardNumber();
+            // Generate random valid CC AND Remove non-digits (dashes/spaces)
+            ccNumber = selectedFaker.finance.creditCardNumber().replace(/\D/g, '');
         }
 
-        // Expiry Date (Future date)
+        // Expiry Date (Format: YY/MM)
         const expiryDate = selectedFaker.date.future({ years: 5 });
-        const expiryFormatted = `${expiryDate.getFullYear()}/${expiryDate.getMonth() + 1}`;
+        // Get last 2 digits of year (e.g. 2030 -> 30)
+        const yearStr = expiryDate.getFullYear().toString().slice(-2);
+        // Get month, add 1 (0-indexed), pad with 0 if single digit (e.g. 5 -> 05)
+        const monthStr = (expiryDate.getMonth() + 1).toString().padStart(2, '0');
+        const expiryFormatted = `${yearStr}/${monthStr}`;
         
         // CVV
         const cvv = selectedFaker.finance.creditCardCVV();
