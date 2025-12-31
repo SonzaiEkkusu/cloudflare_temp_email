@@ -412,51 +412,41 @@ export const handleListQuery = async (
 }
 
 
-export const commonParseMail = async (parsedEmailContext: ParsedEmailContext): Promise<{
+export const commonParseMail = async (raw_mail: string | undefined | null): Promise<{
     sender: string,
     subject: string,
     text: string,
-    html: string,
-    headers?: Record<string, string>[]
+    html: string
 } | undefined> => {
-    // check parsed email context is valid
-	if (!parsedEmailContext || !parsedEmailContext.rawEmail) {
+    if (!raw_mail) {
         return undefined;
     }
-    // return parsed email if already parsed
-    if (parsedEmailContext.parsedEmail) {
-        return parsedEmailContext.parsedEmail;
-    }
-    const raw_mail = parsedEmailContext.rawEmail;
+    // Uncomment this code to use mail-parser-wasm-worker to parse emails start
     // TODO: WASM parse email
     try {
         const { parse_message_wrapper } = await import('mail-parser-wasm-worker');
 
         const parsedEmail = parse_message_wrapper(raw_mail);
-        parsedEmailContext.parsedEmail = {
+        return {
             sender: parsedEmail.sender || "",
             subject: parsedEmail.subject || "",
             text: parsedEmail.text || "",
-            headers: parsedEmail.headers?.map(
-                 (header) => ({ key: header.key, value: header.value })
-            ) || [],
+            headers: parsedEmail.headers || [],
             html: parsedEmail.body_html || "",
         };
-        return parsedEmailContext.parsedEmail;
     } catch (e) {
         console.error("Failed use mail-parser-wasm-worker to parse email", e);
     }
+    // Uncomment this code to use mail-parser-wasm-worker to parse emails end
     try {
         const { default: PostalMime } = await import('postal-mime');
         const parsedEmail = await PostalMime.parse(raw_mail);
-        parsedEmailContext.parsedEmail = {
+        return {
             sender: parsedEmail.from ? `${parsedEmail.from.name} <${parsedEmail.from.address}>` : "",
             subject: parsedEmail.subject || "",
             text: parsedEmail.text || "",
             html: parsedEmail.html || "",
-            headers: parsedEmail.headers || [],
         };
-        return parsedEmailContext.parsedEmail;
     }
     catch (e) {
         console.error("Failed use PostalMime to parse email", e);
