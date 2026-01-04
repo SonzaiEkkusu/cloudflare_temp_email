@@ -3,16 +3,6 @@ import { Telegraf, Context as TgContext, Markup } from "telegraf";
 import { callbackQuery } from "telegraf/filters";
 import * as OTPAuth from "otpauth"; 
 
-// --- IMPORT FAKER (ASIA & EUROPE) ---
-import { 
-    type Faker,
-    fakerEN_US, // Default (US)
-    // Asia
-    fakerID_ID, fakerJA, fakerKO, fakerZH_CN, fakerZH_TW, fakerVI, fakerTH, fakerEN_IN, fakerNE, fakerTR,
-    // Europe
-    fakerEN_GB, fakerFR, fakerDE, fakerIT, fakerES, fakerRU, fakerUK, fakerPL, fakerNL, fakerPT_PT, fakerSV, fakerFI, fakerCS_CZ
-} from '@faker-js/faker';
-
 import { CONSTANTS } from "../constants";
 import { getBooleanValue, getDomains, getJsonObjectValue, getStringValue } from '../utils';
 import { TelegramSettings } from "./settings";
@@ -21,33 +11,6 @@ import { commonParseMail } from "../common";
 import { UserFromGetMe } from "telegraf/types";
 import i18n from "../i18n";
 import { LocaleMessages } from "../i18n/type";
-
-// --- HELPER: LUHN ALGORITHM GENERATOR ---
-// Generates a valid 16-digit credit card number from a specific BIN
-const generateLuhnCC = (bin: string): string => {
-    let ccNumber = bin;
-    // Fill with random digits until length is 15 (leaving space for check digit)
-    while (ccNumber.length < 15) {
-        ccNumber += Math.floor(Math.random() * 10).toString();
-    }
-
-    // Calculate Check Sum
-    let sum = 0;
-    // Iterate over the 15 digits
-    for (let i = 0; i < ccNumber.length; i++) {
-        let digit = parseInt(ccNumber[i]);
-        // For 16-digit numbers, we double digits at even indices (0, 2, 4...)
-        if (i % 2 === 0) {
-            digit *= 2;
-            if (digit > 9) digit -= 9;
-        }
-        sum += digit;
-    }
-
-    // Calculate the check digit (16th digit)
-    const checkDigit = (10 - (sum % 10)) % 10;
-    return ccNumber + checkDigit.toString();
-};
 
 // Helper to get messages by userId
 const getTgMessages = async (
@@ -79,7 +42,6 @@ const COMMANDS = [
     { command: "mails", description: "View mails, /mails <address>" },
     { command: "cleaninvalidaddress", description: "Clean invalid addresses" },
     { command: "lang", description: "Set language" },
-    { command: "fake", description: "Generate Fake ID (e.g. /fake id, /fake us, /fake kr)" },
 ]
 
 export const getTelegramCommands = (c: Context<HonoCustomType>) => {
@@ -287,118 +249,6 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
             + `/lang zh - Chinese\n`
             + `/lang en - English`
         );
-    });
-
-    // --- FEATURE: GENERATE FAKE IDENTITY (WITH CREDIT CARD & BIN SUPPORT) ---
-    bot.command("fake", async (ctx) => {
-        // Supported Countries Configuration
-        const supportedLocales: Record<string, { faker: Faker, name: string, bin?: string }> = {
-            // Default / USA
-            'us': { faker: fakerEN_US, name: 'United States' },
-            'usa': { faker: fakerEN_US, name: 'United States' },
-
-            // --- ASIA ---
-            'id': { faker: fakerID_ID, name: 'Indonesia' },
-            'jp': { faker: fakerJA, name: 'Japan' },
-            'kr': { faker: fakerKO, name: 'South Korea', bin: '625814260' }, 
-            'cn': { faker: fakerZH_CN, name: 'China' },
-            'tw': { faker: fakerZH_TW, name: 'Taiwan' },
-            'vn': { faker: fakerVI, name: 'Vietnam' },
-            'th': { faker: fakerTH, name: 'Thailand' },
-            'in': { faker: fakerEN_IN, name: 'India', bin: '551827706' }, 
-            'np': { faker: fakerNE, name: 'Nepal' },
-            'tr': { faker: fakerTR, name: 'Turkey' },
-
-            // --- EUROPE ---
-            'uk': { faker: fakerEN_GB, name: 'United Kingdom' },
-            'gb': { faker: fakerEN_GB, name: 'United Kingdom' },
-            'fr': { faker: fakerFR, name: 'France' },
-            'de': { faker: fakerDE, name: 'Germany' },
-            'it': { faker: fakerIT, name: 'Italy' },
-            'es': { faker: fakerES, name: 'Spain' },
-            'ru': { faker: fakerRU, name: 'Russia' },
-            'ua': { faker: fakerUK, name: 'Ukraine' },
-            'pl': { faker: fakerPL, name: 'Poland' },
-            'nl': { faker: fakerNL, name: 'Netherlands' },
-            'pt': { faker: fakerPT_PT, name: 'Portugal' },
-            'se': { faker: fakerSV, name: 'Sweden' },
-            'fi': { faker: fakerFI, name: 'Finland' },
-            'cz': { faker: fakerCS_CZ, name: 'Czech Republic' },
-        };
-
-        const args = ctx.message.text.split(/\s+/);
-        let selectedFaker = fakerEN_US;
-        let selectedName = "United States";
-        let specificBin: string | undefined = undefined;
-
-        // Validation Logic:
-        if (args[1]) {
-            const inputCode = args[1].toLowerCase();
-            const selected = supportedLocales[inputCode];
-
-            if (selected) {
-                selectedFaker = selected.faker;
-                selectedName = selected.name;
-                specificBin = selected.bin;
-            } else {
-                return await ctx.reply("Unsupported identity for this country.");
-            }
-        } 
-        
-        // --- Generate Identity Data ---
-        const sex = selectedFaker.person.sexType();
-        const firstName = selectedFaker.person.firstName(sex);
-        const lastName = selectedFaker.person.lastName();
-        // Street Address (Street + Building Number), labeled as "Street"
-        const address = selectedFaker.location.streetAddress(true); 
-        const city = selectedFaker.location.city();
-        let state = "-";
-        try { state = selectedFaker.location.state(); } catch(e) {} 
-        
-        // Combined City States
-        const cityStates = `${city} ${state}`;
-
-        // Remove spaces from zip code
-        const zip = selectedFaker.location.zipCode().replace(/\s/g, '');
-        
-        const phone = selectedFaker.phone.number();
-        const lat = selectedFaker.location.latitude();
-        const long = selectedFaker.location.longitude();
-
-        // --- Generate Credit Card Data ---
-        let ccNumber: string;
-        if (specificBin) {
-            ccNumber = generateLuhnCC(specificBin);
-        } else {
-            ccNumber = selectedFaker.finance.creditCardNumber().replace(/\D/g, '');
-        }
-
-        // Expiry Date (Format: MM/YY)
-        const expiryDate = selectedFaker.date.future({ years: 5 });
-        const yearStr = expiryDate.getFullYear().toString().slice(-2); // Last 2 digits (e.g. 28)
-        const monthStr = (expiryDate.getMonth() + 1).toString().padStart(2, '0'); // Pad 0 (e.g. 05)
-        const expiryFormatted = `${monthStr}/${yearStr}`;
-        
-        // CVV
-        const cvv = selectedFaker.finance.creditCardCVV();
-
-        const message = 
-            `Full Name\t\`${firstName} ${lastName}\`\n` +
-            `Gender\t\`${sex}\`\n` +
-            `Street\t\`${address}\`\n` + 
-            `City States\t\`${cityStates}\`\n` + // Added City States here
-            `City/Town\t\`${city}\`\n` +
-            `State/Province/Region\t\`${state}\`\n` +
-            `Zip/Postal Code\t\`${zip}\`\n` +
-            `Phone Number\t\`${phone}\`\n` +
-            `Country\t\`${selectedName}\`\n` + 
-            `Latitude\t\`${lat}\`\n` +
-            `Longitude\t\`${long}\`\n\n` +
-            `Credit card number\t\`${ccNumber}\`\n` +
-            `Expire\t\`${expiryFormatted}\`\n` +
-            `CVV\t\`${cvv}\``;
-
-        return await ctx.reply(message, { parse_mode: "Markdown" });
     });
 
     const queryMail = async (ctx: TgContext, queryAddress: string, mailIndex: number, edit: boolean) => {
