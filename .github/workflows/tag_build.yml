@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "*"
+  # Menambahkan trigger manual
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Nama Release / Tag (contoh: v1.0.1-manual)'
+        required: true
+        default: 'manual-release'
 
 jobs:
   build:
@@ -13,6 +20,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # --- LOGIKA BARU DI SINI ---
+      # Langkah ini menentukan nama tag berdasarkan trigger eventnya
+      - name: Set Release Tag Name
+        id: set_tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "RELEASE_TAG=${{ inputs.release_name }}" >> $GITHUB_ENV
+          else
+            echo "RELEASE_TAG=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
 
       - name: Install Node.js
         uses: actions/setup-node@v4
@@ -60,6 +78,8 @@ jobs:
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
+          # Kita gunakan variabel yang sudah kita set di langkah 'Set Release Tag Name'
+          tag_name: ${{ env.RELEASE_TAG }}
           files: |
             frontend/frontend.zip
             frontend/telegram-frontend.zip
