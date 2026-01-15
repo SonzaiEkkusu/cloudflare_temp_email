@@ -19,7 +19,7 @@ const getTgMessages = async (
 ): Promise<LocaleMessages> => {
     // Check if user language config is enabled (default false)
     if (!getBooleanValue(c.env.TG_ALLOW_USER_LANG)) {
-        return i18n.getMessages(c.env.DEFAULT_LANG || 'zh');
+        return i18n.getMessages(c.env.DEFAULT_LANG || 'en');
     }
 
     const uid = userId || ctx?.message?.from?.id?.toString() || ctx?.callbackQuery?.from?.id?.toString();
@@ -27,7 +27,7 @@ const getTgMessages = async (
         const savedLang = await c.env.KV.get(`${CONSTANTS.TG_KV_PREFIX}:lang:${uid}`);
         if (savedLang) { return i18n.getMessages(savedLang); }
     }
-    return i18n.getMessages(c.env.DEFAULT_LANG || 'zh');
+    return i18n.getMessages(c.env.DEFAULT_LANG || 'en');
 };
 
 // Bilingual command descriptions with full usage instructions
@@ -437,8 +437,8 @@ export async function sendMailToTelegram(
     };
 
     if (globalPush) {
-        // Keeps fallback as 'zh' or DEFAULT_LANG if set, can be changed to 'id' if desired globally
-        const globalMsgs = i18n.getMessages(c.env.DEFAULT_LANG || 'zh');
+        // Keeps fallback as 'en' or DEFAULT_LANG if set, can be changed to 'id' if desired globally
+        const globalMsgs = i18n.getMessages(c.env.DEFAULT_LANG || 'en');
         for (const pushId of settings.globalMailPushList) {
             await buildAndSend(pushId, globalMsgs);
         }
