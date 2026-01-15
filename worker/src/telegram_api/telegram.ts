@@ -1,7 +1,6 @@
 import { Context } from "hono";
 import { Telegraf, Context as TgContext, Markup } from "telegraf";
 import { callbackQuery } from "telegraf/filters";
-import * as OTPAuth from "otpauth"; 
 
 import { CONSTANTS } from "../constants";
 import { getBooleanValue, getDomains, getJsonObjectValue, getStringValue } from '../utils';
@@ -20,7 +19,7 @@ const getTgMessages = async (
 ): Promise<LocaleMessages> => {
     // Check if user language config is enabled (default false)
     if (!getBooleanValue(c.env.TG_ALLOW_USER_LANG)) {
-        return i18n.getMessages(c.env.DEFAULT_LANG || 'en');
+        return i18n.getMessages(c.env.DEFAULT_LANG || 'zh');
     }
 
     const uid = userId || ctx?.message?.from?.id?.toString() || ctx?.callbackQuery?.from?.id?.toString();
@@ -28,20 +27,47 @@ const getTgMessages = async (
         const savedLang = await c.env.KV.get(`${CONSTANTS.TG_KV_PREFIX}:lang:${uid}`);
         if (savedLang) { return i18n.getMessages(savedLang); }
     }
-    return i18n.getMessages(c.env.DEFAULT_LANG || 'en');
+    return i18n.getMessages(c.env.DEFAULT_LANG || 'zh');
 };
 
 // Bilingual command descriptions with full usage instructions
 const COMMANDS = [
-    { command: "start", description: "Get started" },
-    { command: "new", description: "Create address, /new <name>@<domain>" },
-    { command: "address", description: "View address list" },
-    { command: "bind", description: "Bind address, /bind <credential>" },
-    { command: "unbind", description: "Unbind address, /unbind <address>" },
-    { command: "delete", description: "Delete address, /delete <address>" },
-    { command: "mails", description: "View mails, /mails <address>" },
-    { command: "cleaninvalidaddress", description: "Clean invalid addresses" },
-    { command: "lang", description: "Set language" },
+    {
+        command: "start",
+        description: "Mulai | Get started"
+    },
+    {
+        command: "new",
+        description: "Buat alamat, /new <name>@<domain>, name[a-z0-9] valid, kosong=acak, @domain opsional | Create address"
+    },
+    {
+        command: "address",
+        description: "Lihat daftar alamat | View address list"
+    },
+    {
+        command: "bind",
+        description: "Bind alamat, /bind <credential> | Bind address"
+    },
+    {
+        command: "unbind",
+        description: "Unbind alamat, /unbind <address> | Unbind address"
+    },
+    {
+        command: "delete",
+        description: "Hapus alamat, /delete <address> | Delete address"
+    },
+    {
+        command: "mails",
+        description: "Lihat email, /mails <address>, default pertama jika kosong | View mails"
+    },
+    {
+        command: "cleaninvalidaddress",
+        description: "Bersihkan alamat tidak valid | Clean invalid addresses"
+    },
+    {
+        command: "lang",
+        description: "Atur bahasa /lang <id|en> | Set language /lang <id|en>"
+    },
 ]
 
 export const getTelegramCommands = (c: Context<HonoCustomType>) => {
@@ -237,16 +263,17 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
 
         // @ts-ignore
         const lang = ctx?.message?.text.slice("/lang".length).trim().toLowerCase();
-        if (lang === 'zh' || lang === 'en') {
+        // Updated to support 'id' and 'en'
+        if (lang === 'id' || lang === 'en') {
             await c.env.KV.put(`${CONSTANTS.TG_KV_PREFIX}:lang:${userId}`, lang);
-            return await ctx.reply(`${msgs.TgLangSetSuccessMsg} ${lang === 'zh' ? 'Chinese' : 'English'}`);
+            return await ctx.reply(`${msgs.TgLangSetSuccessMsg} ${lang === 'id' ? 'Bahasa Indonesia' : 'English'}`);
         }
 
         const currentLang = await c.env.KV.get(`${CONSTANTS.TG_KV_PREFIX}:lang:${userId}`);
         return await ctx.reply(
             `${msgs.TgCurrentLangMsg} ${currentLang || 'auto'}\n`
             + `${msgs.TgSelectLangMsg}\n`
-            + `/lang zh - Chinese\n`
+            + `/lang id - Bahasa Indonesia\n`
             + `/lang en - English`
         );
     });
@@ -336,42 +363,6 @@ export function newTelegramBot(c: Context<HonoCustomType>, token: string): Teleg
         await ctx.answerCbQuery();
     });
 
-    // --- FEATURE: 2FA / OTP Generator ---
-    // Listens for plain text messages (not commands)
-    bot.on("text", async (ctx) => {
-        // Get message text
-        const text = ctx.message.text.trim().replace(/\s/g, '').toUpperCase();
-
-        // Regex for Base32 validation (A-Z and 2-7)
-        // Minimum length 10 to avoid triggering on random chat
-        const base32Regex = /^[A-Z2-7]{10,}$/;
-
-        if (base32Regex.test(text)) {
-            try {
-                // TOTP Configuration
-                const totp = new OTPAuth.TOTP({
-                    issuer: "TelegramBot",
-                    label: "User",
-                    algorithm: "SHA1",
-                    digits: 6,
-                    period: 30,
-                    secret: OTPAuth.Secret.fromBase32(text)
-                });
-
-                // Generate code
-                const code = totp.generate();
-
-                // Reply with formatted code
-                return await ctx.reply(`Your OTP code is: \`${code}\``, {
-                    parse_mode: "Markdown"
-                });
-            } catch (e) {
-                // Ignore errors to prevent spamming on invalid formats
-                console.error("OTP Error", e);
-            }
-        }
-    });
-
     return bot;
 }
 
@@ -446,7 +437,8 @@ export async function sendMailToTelegram(
     };
 
     if (globalPush) {
-        const globalMsgs = i18n.getMessages(c.env.DEFAULT_LANG || 'en');
+        // Keeps fallback as 'zh' or DEFAULT_LANG if set, can be changed to 'id' if desired globally
+        const globalMsgs = i18n.getMessages(c.env.DEFAULT_LANG || 'zh');
         for (const pushId of settings.globalMailPushList) {
             await buildAndSend(pushId, globalMsgs);
         }
